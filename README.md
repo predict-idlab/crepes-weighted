@@ -16,6 +16,6 @@ This project is licensed under the BSD 3-Clause License - see the [LICENSE](LICE
 - - -
 
 <p align="center">
-👤 <i>Jef Jonkers, Jarne Verhaeghe</i>
+👤 <i>Jef Jonkers</i>
 </p>
 
