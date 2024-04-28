@@ -1,0 +1,29 @@
+{
+    "python.terminal.activateEnvironment": true,
+    "python.testing.pytestEnabled": true,
+    "pythonTestExplorer.testFramework": null,
+    "pythonTestExplorer.outputs.showOutputsOnRun": false,
+    "pythonTestExplorer.outputs.collectOutputs": false,
+
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "files.trimTrailingWhitespace": true,
+    "python.testing.unittestEnabled": false,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit",
+            "source.fixAll": "explicit"
+        }
+      },
+    "isort.args":["--profile", "black"],
+    "black-formatter.args" : ["--line-length=100"],
+    "flake8.args": [
+        "--ignore=E203 E501 W503",
+        ],
+    "flake8.interpreter": [],
+}
+
+//"--disable=W0511, W1401, W0102, E0401"

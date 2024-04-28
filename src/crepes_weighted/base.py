@@ -51,10 +51,7 @@ class ConformalClassifier(ConformalPredictor):
 
     def __repr__(self):
         if self.fitted:
-            return (
-                f"ConformalClassifier(fitted={self.fitted}, "
-                f"mondrian={self.mondrian})"
-            )
+            return f"ConformalClassifier(fitted={self.fitted}, " f"mondrian={self.mondrian})"
         else:
             return f"ConformalClassifier(fitted={self.fitted})"
 
@@ -173,8 +170,7 @@ class ConformalClassifier(ConformalPredictor):
                     [
                         (
                             np.sum(bin_alphas[bin_indexes[i]] > alpha)
-                            + np.random.rand()
-                            * (np.sum(bin_alphas[bin_indexes[i]] == alpha) + 1)
+                            + np.random.rand() * (np.sum(bin_alphas[bin_indexes[i]] == alpha) + 1)
                         )
                         / (len(bin_alphas[bin_indexes[i]]) + 1)
                         for alpha in alphas[i]
@@ -357,23 +353,17 @@ class ConformalClassifier(ConformalPredictor):
 
 def get_test_results(prediction_sets, classes, y, metrics):
     test_results = {}
-    class_indexes = np.array(
-        [np.argwhere(classes == y[i])[0][0] for i in range(len(y))]
-    )
+    class_indexes = np.array([np.argwhere(classes == y[i])[0][0] for i in range(len(y))])
     if "error" in metrics:
-        test_results["error"] = 1 - np.sum(
-            prediction_sets[np.arange(len(y)), class_indexes]
-        ) / len(y)
+        test_results["error"] = 1 - np.sum(prediction_sets[np.arange(len(y)), class_indexes]) / len(
+            y
+        )
     if "avg_c" in metrics:
         test_results["avg_c"] = np.sum(prediction_sets) / len(y)
     if "one_c" in metrics:
-        test_results["one_c"] = np.sum([np.sum(p) == 1 for p in prediction_sets]) / len(
-            y
-        )
+        test_results["one_c"] = np.sum([np.sum(p) == 1 for p in prediction_sets]) / len(y)
     if "empty" in metrics:
-        test_results["empty"] = np.sum([np.sum(p) == 0 for p in prediction_sets]) / len(
-            y
-        )
+        test_results["empty"] = np.sum([np.sum(p) == 0 for p in prediction_sets]) / len(y)
     return test_results
 
 
@@ -476,19 +466,15 @@ class ConformalRegressor(ConformalPredictor):
             bin_values = np.unique(bins)
             if sigmas is None:
                 self.normalized = False
-                sort_idx = [
-                    np.argsort(abs_residuals[bins == b])[::-1] for b in bin_values
-                ]
+                sort_idx = [np.argsort(abs_residuals[bins == b])[::-1] for b in bin_values]
                 self.alphas = (
                     bin_values,
                     [abs_residuals[bins == b][sort_idx[b]] for b in bin_values],
                 )
             else:
                 self.normalized = True
-                sort_idx = [
-                    np.argsort(abs_residuals[bins == b] / sigmas[bins == b])[::-1]
-                    for b in bin_values
-                ]
+                abs_residuals = abs_residuals / sigmas
+                sort_idx = [np.argsort(abs_residuals[bins == b])[::-1] for b in bin_values]
                 self.alphas = (
                     bin_values,
                     [abs_residuals[bins == b][sort_idx[b]] for b in bin_values],
@@ -583,9 +569,7 @@ class ConformalRegressor(ConformalPredictor):
                     raise ValueError("likelihood_ratios must be provided")
                 weights_cal = self.likelihood_ratios_cal.reshape(1, -1).repeat(
                     len(y_hat), axis=0
-                ) / (
-                    self.likelihood_ratios_cal.sum() + likelihood_ratios.reshape(-1, 1)
-                )
+                ) / (self.likelihood_ratios_cal.sum() + likelihood_ratios.reshape(-1, 1))
                 weights_test = likelihood_ratios.reshape(-1, 1) / (
                     self.likelihood_ratios_cal.sum() + likelihood_ratios.reshape(-1, 1)
                 )
@@ -622,40 +606,38 @@ class ConformalRegressor(ConformalPredictor):
             else:
                 if likelihood_ratios is None:
                     raise ValueError("likelihood_ratios must be provided")
-                weights_cal = [
-                    self.likelihood_ratios_cal[bin_indexes[b]]
+                weights_cal = {
+                    b: self.likelihood_ratios_cal[b]
                     .reshape(1, -1)
                     .repeat(len(bin_indexes[b]), axis=0)
                     / (
-                        self.likelihood_ratios_cal[bin_indexes[b]].sum()
+                        self.likelihood_ratios_cal[b].sum()
                         + likelihood_ratios.reshape(-1, 1)[bin_indexes[b]]
                     )
                     for b in range(len(bin_values))
-                ]
-                weights_test = [
-                    likelihood_ratios.reshape(-1, 1)[bin_indexes[b]]
+                    if len(bin_indexes[b]) > 0
+                }
+                weights_test = {
+                    b: likelihood_ratios.reshape(-1, 1)[bin_indexes[b]]
                     / (
-                        self.likelihood_ratios_cal[bin_indexes[b]].sum()
+                        self.likelihood_ratios_cal[b].sum()
                         + likelihood_ratios.reshape(-1, 1)[bin_indexes[b]]
                     )
                     for b in range(len(bin_values))
-                ]
-                alpha_indexes = np.array(
-                    [
-                        (
-                            (np.cumsum(weights_cal[b], axis=1) + weights_test[b])
-                            > (1 - confidence)
-                        ).argmax(axis=1)
-                        - 1
-                        for b in range(len(bin_values))
-                    ]
-                )
+                    if len(bin_indexes[b]) > 0
+                }
+                alpha_indexes = {
+                    b: (
+                        (np.cumsum(weights_cal[b], axis=1) + weights_test[b]) > (1 - confidence)
+                    ).argmax(axis=1)
+                    - 1
+                    for b in range(len(bin_values))
+                    if len(bin_indexes[b]) > 0
+                }
             too_small_bins = np.argwhere(alpha_indexes < 0)
             if len(too_small_bins) > 0:
                 if len(too_small_bins[:, 0]) < 11:
-                    bins_to_show = " ".join(
-                        [str(bin_values[i]) for i in too_small_bins[:, 0]]
-                    )
+                    bins_to_show = " ".join([str(bin_values[i]) for i in too_small_bins[:, 0]])
                 else:
                     bins_to_show = " ".join(
                         [str(bin_values[i]) for i in too_small_bins[:10, 0]] + ["..."]
@@ -667,24 +649,25 @@ class ConformalRegressor(ConformalPredictor):
                     "the corresponding intervals will be of "
                     "maximum size"
                 )
-            bin_alpha = np.array(
-                [
-                    bin_alphas[b][alpha_indexes[b]] if alpha_indexes[b] >= 0 else np.inf
-                    for b in range(len(bin_values))
-                ]
-            )
+            bin_alpha = {
+                b: bin_alphas[b][alpha_indexes[b]] if alpha_indexes[b] >= 0 else np.inf
+                for b in range(len(bin_values))
+                if len(bin_indexes[b]) > 0
+            }
             if self.normalized:
                 for b in range(len(bin_values)):
-                    intervals[bin_indexes[b], 0] = (
-                        y_hat[bin_indexes[b]] - bin_alpha[b] * sigmas[bin_indexes[b]]
-                    )
-                    intervals[bin_indexes[b], 1] = (
-                        y_hat[bin_indexes[b]] + bin_alpha[b] * sigmas[bin_indexes[b]]
-                    )
+                    if len(bin_indexes[b]) > 0:
+                        intervals[bin_indexes[b], 0] = (
+                            y_hat[bin_indexes[b]] - bin_alpha[b] * sigmas[bin_indexes[b]]
+                        )
+                        intervals[bin_indexes[b], 1] = (
+                            y_hat[bin_indexes[b]] + bin_alpha[b] * sigmas[bin_indexes[b]]
+                        )
             else:
                 for b in range(len(bin_values)):
-                    intervals[bin_indexes[b], 0] = y_hat[bin_indexes[b]] - bin_alpha[b]
-                    intervals[bin_indexes[b], 1] = y_hat[bin_indexes[b]] + bin_alpha[b]
+                    if len(bin_indexes[b]) > 0:
+                        intervals[bin_indexes[b], 0] = y_hat[bin_indexes[b]] - bin_alpha[b]
+                        intervals[bin_indexes[b], 1] = y_hat[bin_indexes[b]] + bin_alpha[b]
         if y_min > -np.inf:
             intervals[intervals < y_min] = y_min
         if y_max < np.inf:
@@ -755,9 +738,7 @@ class ConformalRegressor(ConformalPredictor):
         if metrics is None:
             metrics = ["error", "eff_mean", "eff_med", "time_fit", "time_evaluate"]
         test_results = {}
-        intervals = self.predict(
-            y_hat, sigmas, bins, likelihood_ratios, confidence, y_min, y_max
-        )
+        intervals = self.predict(y_hat, sigmas, bins, likelihood_ratios, confidence, y_min, y_max)
         if "error" in metrics:
             test_results["error"] = 1 - np.mean(
                 np.logical_and(intervals[:, 0] <= y, y <= intervals[:, 1])
@@ -881,11 +862,9 @@ class ConformalPredictiveSystem(ConformalPredictor):
                     [residuals[bins == b][sort_idx[b]] for b in bin_values],
                 )
             else:
+                residuals = residuals / sigmas
                 self.normalized = True
-                sort_idx = [
-                    np.argsort(residuals[bins == b] / sigmas[bins == b])
-                    for b in bin_values
-                ]
+                sort_idx = [np.argsort(residuals[bins == b]) for b in bin_values]
                 self.alphas = (
                     bin_values,
                     [residuals[bins == b][sort_idx[b]] for b in bin_values],
@@ -1082,9 +1061,7 @@ class ConformalPredictiveSystem(ConformalPredictor):
             or (np.array(higher_percentiles) < 0).any()
         ):
             raise ValueError("All percentiles must be in the range [0,100]")
-        no_result_columns = (
-            (y is not None) + len(lower_percentiles) + len(higher_percentiles)
-        )
+        no_result_columns = (y is not None) + len(lower_percentiles) + len(higher_percentiles)
         if no_result_columns > 0:
             result = np.zeros((len(y_hat), no_result_columns))
         if likelihood_ratios is not None:
@@ -1093,49 +1070,48 @@ class ConformalPredictiveSystem(ConformalPredictor):
                     raise ValueError("likelihood_ratios_cal must be " "provided")
                 weights_cal = self.likelihood_ratios_cal.reshape(1, -1).repeat(
                     len(y_hat), axis=0
-                ) / (
-                    self.likelihood_ratios_cal.sum() + likelihood_ratios.reshape(-1, 1)
-                )
+                ) / (self.likelihood_ratios_cal.sum() + likelihood_ratios.reshape(-1, 1))
                 weights_test = likelihood_ratios.reshape(-1, 1) / (
                     self.likelihood_ratios_cal.sum() + likelihood_ratios.reshape(-1, 1)
                 )
             else:
                 if self.likelihood_ratios_cal is None:
                     raise ValueError("likelihood_ratios_cal must be " "provided")
-                weights_cal = [
-                    self.likelihood_ratios_cal[bin_indexes[b]]
+                weights_cal = {
+                    b: self.likelihood_ratios_cal[b]
                     .reshape(1, -1)
                     .repeat(len(bin_indexes[b]), axis=0)
                     / (
-                        self.likelihood_ratios_cal[bin_indexes[b]].sum()
+                        self.likelihood_ratios_cal[b].sum()
                         + likelihood_ratios.reshape(-1, 1)[bin_indexes[b]]
                     )
                     for b in range(len(bin_values))
-                ]
-                weights_test = [
-                    likelihood_ratios.reshape(-1, 1)[bin_indexes[b]]
+                    if len(bin_indexes[b]) > 0
+                }
+                weights_test = {
+                    b: likelihood_ratios.reshape(-1, 1)[bin_indexes[b]]
                     / (
-                        self.likelihood_ratios_cal[bin_indexes[b]].sum()
+                        self.likelihood_ratios_cal[b].sum()
                         + likelihood_ratios.reshape(-1, 1)[bin_indexes[b]]
                     )
                     for b in range(len(bin_values))
-                ]
+                    if len(bin_indexes[b]) > 0
+                }
         else:
             if not self.mondrian:
-                weights_cal = np.ones((len(y_hat), len(self.alphas))) / (
-                    len(self.alphas) + 1
-                )
+                weights_cal = np.ones((len(y_hat), len(self.alphas))) / (len(self.alphas) + 1)
                 weights_test = np.ones((len(y_hat), 1)) / (len(self.alphas) + 1)
             else:
-                weights_cal = [
-                    np.ones((len(bin_indexes[b]), len(bin_alphas[b])))
-                    / (len(bin_alphas[b]) + 1)
+                weights_cal = {
+                    b: np.ones((len(bin_indexes[b]), len(bin_alphas[b]))) / (len(bin_alphas[b]) + 1)
                     for b in range(len(bin_values))
-                ]
-                weights_test = [
-                    np.ones((len(bin_indexes[b]), 1)) / (len(bin_alphas[b]) + 1)
+                    if len(bin_indexes[b]) > 0
+                }
+                weights_test = {
+                    b: np.ones((len(bin_indexes[b]), 1)) / (len(bin_alphas[b]) + 1)
                     for b in range(len(bin_values))
-                ]
+                    if len(bin_indexes[b]) > 0
+                }
         if y is not None:
             no_prec_result_cols += 1
             gammas = np.random.rand(len(y_hat))
@@ -1149,29 +1125,33 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 y = y.reshape(-1, 1)
                 if not self.mondrian:
                     if self.normalized:
-                        dist = y_hat.reshape(-1, 1) + sigmas.reshape(
-                            -1, 1
-                        ) * self.alphas.reshape(1, -1)
+                        dist = y_hat.reshape(-1, 1) + sigmas.reshape(-1, 1) * self.alphas.reshape(
+                            1, -1
+                        )
                     else:
                         dist = y_hat.reshape(-1, 1) + self.alphas.reshape(1, -1)
-                    result[:, 0] = (np.sum((dist < y) * weights_cal, axis=1) +
-                                    np.sum((dist == y) * weights_cal, axis=1) * gammas +
-                                    gammas * weights_test.flatten()
-                                    )
+                    result[:, 0] = (
+                        np.sum((dist < y) * weights_cal, axis=1)
+                        + np.sum((dist == y) * weights_cal, axis=1) * gammas
+                        + gammas * weights_test.flatten()
+                    )
                 else:
                     for b in range(len(bin_values)):
+                        if len(bin_indexes[b]) == 0:
+                            continue
                         if self.normalized:
                             dist = y_hat[bin_indexes[b]].reshape(-1, 1) + sigmas[
                                 bin_indexes[b]
                             ].reshape(-1, 1) * bin_alphas[b].reshape(1, -1)
                         else:
-                            dist = y_hat[bin_indexes[b]].reshape(-1, 1) + bin_alphas[
-                                b
-                            ].reshape(1, -1)
-                        result[bin_indexes[b], 0] = (np.sum((dist < y) * weights_cal[b], axis=1) +
-                                                     np.sum((dist == y) * weights_cal[b], axis=1) * gammas[bin_indexes[b]] +
-                                                     gammas[bin_indexes[b]] * weights_test[b].flatten()
-                                                     )   
+                            dist = y_hat[bin_indexes[b]].reshape(-1, 1) + bin_alphas[b].reshape(
+                                1, -1
+                            )
+                        result[bin_indexes[b], 0] = (
+                            np.sum((dist < y) * weights_cal[b], axis=1)
+                            + np.sum((dist == y) * weights_cal[b], axis=1) * gammas[bin_indexes[b]]
+                            + gammas[bin_indexes[b]] * weights_test[b].flatten()
+                        )
             else:
                 raise ValueError(
                     (
@@ -1181,20 +1161,21 @@ class ConformalPredictiveSystem(ConformalPredictor):
                     )
                 )
         percentile_indexes = []
-        y_min_columns = []
-        y_max_columns = []
+        if self.mondrian:
+            y_min_columns = {}
+            y_max_columns = {}
+        else:
+            y_min_columns = []
+            y_max_columns = []
         # TDOO: still lot of issues (certainlty with mondrian and too low and high index)
         if len(lower_percentiles) > 0:
-            lower_percentiles = [
-                lower_percentile / 100 for lower_percentile in lower_percentiles
-            ]
+            lower_percentiles = [lower_percentile / 100 for lower_percentile in lower_percentiles]
             if not self.mondrian:
                 lower_indexes = np.stack(
                     [
-                        (
-                            (np.cumsum(weights_cal, axis=1) + weights_test)
-                            < lower_percentile
-                        ).argmin(axis=1)
+                        ((np.cumsum(weights_cal, axis=1) + weights_test) < lower_percentile).argmin(
+                            axis=1
+                        )
                         - 1
                         for lower_percentile in lower_percentiles
                     ],
@@ -1224,8 +1205,10 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 percentile_indexes = lower_indexes
             else:
                 too_small_bins = []
-                binned_lower_indexes = []
+                binned_lower_indexes = {}
                 for b in range(len(bin_values)):
+                    if len(bin_indexes[b]) == 0:
+                        continue
                     lower_indexes = np.stack(
                         [
                             (
@@ -1237,14 +1220,14 @@ class ConformalPredictiveSystem(ConformalPredictor):
                         ],
                         axis=1,
                     )
-                    binned_lower_indexes.append(lower_indexes)
+                    binned_lower_indexes[b] = lower_indexes
                     too_low_indexes = np.argwhere(lower_indexes < 0)
                     if len(too_low_indexes) > 0:
                         lower_indexes[too_low_indexes[:, 0], too_low_indexes[:, 1]] = 0
                         too_small_bins.append(str(bin_values[b]))
-                        y_min_columns.append(too_low_indexes)
+                        y_min_columns[b] = too_low_indexes
                     else:
-                        y_min_columns.append([])
+                        y_min_columns[b] = []
                 percentile_indexes = [binned_lower_indexes]
                 if len(too_small_bins) > 0:
                     if len(too_small_bins) < 11:
@@ -1267,8 +1250,7 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 higher_indexes = np.stack(
                     [
                         (
-                            (np.cumsum(weights_cal, axis=1) + weights_test)
-                            >= higher_percentile
+                            (np.cumsum(weights_cal, axis=1) + weights_test) >= higher_percentile
                         ).argmax(axis=1)
                         - 1
                         for higher_percentile in higher_percentiles
@@ -1295,20 +1277,18 @@ class ConformalPredictiveSystem(ConformalPredictor):
                     )
                     y_max_columns = too_high_indexes
                     y_max_columns[:, 1] = (
-                        y_max_columns[:, 1]
-                        + no_prec_result_cols
-                        + len(lower_percentiles)
+                        y_max_columns[:, 1] + no_prec_result_cols + len(lower_percentiles)
                     )
                 if len(percentile_indexes) == 0:
                     percentile_indexes = higher_indexes
                 else:
-                    percentile_indexes = np.concatenate(
-                        (lower_indexes, higher_indexes), axis=-1
-                    )
+                    percentile_indexes = np.concatenate((lower_indexes, higher_indexes), axis=-1)
             else:
                 too_small_bins = []
-                binned_higher_indexes = []
+                binned_higher_indexes = {}
                 for b in range(len(bin_values)):
+                    if len(bin_indexes[b]) == 0:
+                        continue
                     higher_indexes = np.stack(
                         [
                             (
@@ -1320,16 +1300,14 @@ class ConformalPredictiveSystem(ConformalPredictor):
                         ],
                         axis=1,
                     )
-                    binned_higher_indexes.append(higher_indexes)
-                    too_high_indexes = np.argwhere(
-                        higher_indexes > len(bin_alphas[b]) - 1
-                    )
+                    binned_higher_indexes[b] = higher_indexes
+                    too_high_indexes = np.argwhere(higher_indexes > len(bin_alphas[b]) - 1)
                     if len(too_high_indexes) > 0:
                         higher_indexes[too_high_indexes] = -1
                         too_small_bins.append(str(bin_values[b]))
-                        y_max_columns.append(too_high_indexes)
+                        y_max_columns[b] = too_high_indexes
                     else:
-                        y_max_columns.append([])
+                        y_max_columns[b] = []
                 if len(percentile_indexes) == 0:
                     percentile_indexes = [binned_higher_indexes]
                 else:
@@ -1352,8 +1330,7 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 if self.normalized:
                     result[
                         :,
-                        no_prec_result_cols : no_prec_result_cols
-                        + percentile_indexes.shape[1],
+                        no_prec_result_cols : no_prec_result_cols + percentile_indexes.shape[1],
                     ] = np.array(
                         [
                             (y_hat[i] + sigmas[i] * self.alphas)[percentile_indexes[i]]
@@ -1363,13 +1340,9 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 else:
                     result[
                         :,
-                        no_prec_result_cols : no_prec_result_cols
-                        + percentile_indexes.shape[1],
+                        no_prec_result_cols : no_prec_result_cols + percentile_indexes.shape[1],
                     ] = np.array(
-                        [
-                            (y_hat[i] + self.alphas)[percentile_indexes[i]]
-                            for i in range(len(y_hat))
-                        ]
+                        [(y_hat[i] + self.alphas)[percentile_indexes[i]] for i in range(len(y_hat))]
                     )
                 if len(y_min_columns) > 0:
                     result[y_min_columns[:, 0], y_min_columns[:, 1]] = y_min
@@ -1380,9 +1353,7 @@ class ConformalPredictiveSystem(ConformalPredictor):
                     percentile_indexes = percentile_indexes[0]
                 else:
                     percentile_indexes = [
-                        np.concatenate(
-                            (percentile_indexes[0][b], percentile_indexes[1][b]), axis=1
-                        )
+                        np.concatenate((percentile_indexes[0][b], percentile_indexes[1][b]), axis=1)
                         for b in range(len(bin_values))
                     ]
                 if self.normalized:
@@ -1394,9 +1365,7 @@ class ConformalPredictiveSystem(ConformalPredictor):
                                 + percentile_indexes[b].shape[1],
                             ] = np.array(
                                 [
-                                    (y_hat[i] + sigmas[i] * bin_alphas[b])[
-                                        percentile_indexes[b][i]
-                                    ]
+                                    (y_hat[i] + sigmas[i] * bin_alphas[b])[percentile_indexes[b][i]]
                                     for i in bin_indexes[b]
                                 ]
                             )
@@ -1415,7 +1384,9 @@ class ConformalPredictiveSystem(ConformalPredictor):
                             )
                 if len(y_min_columns) > 0:
                     for b in range(len(bin_values)):
-                        if len(bin_indexes[b]) > 0 and len(y_min_columns[b]) > 0:
+                        if len(bin_indexes[b]) == 0:
+                            continue
+                        if len(y_min_columns[b]) > 0:
                             result[
                                 bin_indexes[b],
                                 y_min_columns[b][:, 1],
@@ -1431,8 +1402,7 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 ][
                     result[
                         :,
-                        no_prec_result_cols : no_prec_result_cols
-                        + len(percentile_indexes),
+                        no_prec_result_cols : no_prec_result_cols + len(percentile_indexes),
                     ]
                     < y_min
                 ] = y_min
@@ -1443,8 +1413,7 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 ][
                     result[
                         :,
-                        no_prec_result_cols : no_prec_result_cols
-                        + len(percentile_indexes),
+                        no_prec_result_cols : no_prec_result_cols + len(percentile_indexes),
                     ]
                     > y_max
                 ] = y_max
@@ -1456,21 +1425,14 @@ class ConformalPredictiveSystem(ConformalPredictor):
         if return_cpds:
             if not self.mondrian:
                 if self.normalized:
-                    cpds = np.array(
-                        [y_hat[i] + sigmas[i] * self.alphas for i in range(len(y_hat))]
-                    )
+                    cpds = np.array([y_hat[i] + sigmas[i] * self.alphas for i in range(len(y_hat))])
                 else:
                     cpds = np.array([y_hat[i] + self.alphas for i in range(len(y_hat))])
                 cpds = np.stack((cpds, weights_cal), axis=-1)
             else:
                 if self.normalized:
                     cpds = [
-                        np.array(
-                            [
-                                y_hat[i] + sigmas[i] * bin_alphas[b]
-                                for i in bin_indexes[b]
-                            ]
-                        )
+                        np.array([y_hat[i] + sigmas[i] * bin_alphas[b] for i in bin_indexes[b]])
                         for b in range(len(bin_values))
                     ]
                 else:
@@ -1479,8 +1441,7 @@ class ConformalPredictiveSystem(ConformalPredictor):
                         for b in range(len(bin_values))
                     ]
                 cpds = [
-                    np.stack((cpds[b], weights_cal[b]), axis=-1)
-                    for b in range(len(bin_values))
+                    np.stack((cpds[b], weights_cal[b]), axis=-1) for b in range(len(bin_values))
                 ]
         if no_result_columns > 0 and return_cpds:
             if not self.mondrian or cpds_by_bins:
@@ -1604,13 +1565,9 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 weighted_cpd = True
             if not self.mondrian:
                 if self.normalized:
-                    crps = calculate_crps(
-                        cpds, self.alphas, sigmas, y, weighted_cpds=weighted_cpd
-                    )
+                    crps = calculate_crps(cpds, self.alphas, sigmas, y, weighted_cpds=weighted_cpd)
                 else:
-                    crps = calculate_crps(
-                        cpds, self.alphas, np.ones(len(y_hat)), y, weighted_cpd
-                    )
+                    crps = calculate_crps(cpds, self.alphas, np.ones(len(y_hat)), y, weighted_cpd)
             else:
                 bin_values, bin_alphas = self.alphas
                 bin_indexes = [np.argwhere(bins == b).T[0] for b in bin_values]
@@ -1663,17 +1620,19 @@ class ConformalPredictiveSystem(ConformalPredictor):
         if "CRPS" in metrics:
             test_results["CRPS"] = crps
         if "coverage_q" in metrics:
-            deciles = self.predict(y_hat,
-                                   sigmas=sigmas,
-                                   bins=bins,
-                                   likelihood_ratios=likelihood_ratios,
-                                   lower_percentiles=np.arange(10, 100, 10),
-                                   y_min=y_min,
-                                   y_max=y_max,
-                                   return_cpds=False)
+            deciles = self.predict(
+                y_hat,
+                sigmas=sigmas,
+                bins=bins,
+                likelihood_ratios=likelihood_ratios,
+                lower_percentiles=np.arange(10, 100, 10),
+                y_min=y_min,
+                y_max=y_max,
+                return_cpds=False,
+            )
             coverage = np.mean(np.array(y).reshape(-1, 1) <= deciles, axis=0)
             for i in range(1, 10):
-                test_results[f"coverage_q{int(i*10)}"] = coverage[i-1]
+                test_results[f"coverage_q{int(i*10)}"] = coverage[i - 1]
         if "time_fit" in metrics:
             test_results["time_fit"] = self.time_fit
             toc = time.time()
@@ -1810,9 +1769,7 @@ class WrapRegressor:
                     f"predictor={self.cps})"
                 )
         else:
-            return (
-                f"WrapRegressor(learner={self.learner}, calibrated={self.calibrated})"
-            )
+            return f"WrapRegressor(learner={self.learner}, calibrated={self.calibrated})"
 
     def fit(self, X, y, **kwargs):
         """
@@ -1891,9 +1848,7 @@ class WrapRegressor:
         """
         return self.learner.predict(X)
 
-    def calibrate(
-        self, X, y, sigmas=None, bins=None, likelihood_ratios=None, oob=False, cps=False
-    ):
+    def calibrate(self, X, y, sigmas=None, bins=None, likelihood_ratios=None, oob=False, cps=False):
         """
         Fit a :class:`.ConformalRegressor` or
         :class:`.ConformalPredictiveSystem` using learner.
@@ -1990,15 +1945,11 @@ class WrapRegressor:
             residuals = y - self.predict(X)
         if not cps:
             self.cr = ConformalRegressor()
-            self.cr.fit(
-                residuals, sigmas=sigmas, bins=bins, likelihood_ratios=likelihood_ratios
-            )
+            self.cr.fit(residuals, sigmas=sigmas, bins=bins, likelihood_ratios=likelihood_ratios)
             self.cps = None
         else:
             self.cps = ConformalPredictiveSystem()
-            self.cps.fit(
-                residuals, sigmas=sigmas, bins=bins, likelihood_ratios=likelihood_ratios
-            )
+            self.cps.fit(residuals, sigmas=sigmas, bins=bins, likelihood_ratios=likelihood_ratios)
             self.cr = None
         self.calibrated = True
         return self
@@ -2088,9 +2039,7 @@ class WrapRegressor:
         has been calibrated with such values.
         """
         if not self.calibrated:
-            raise RuntimeError(
-                ("predict_int requires that calibrate has been" "called first")
-            )
+            raise RuntimeError(("predict_int requires that calibrate has been" "called first"))
         else:
             y_hat = self.learner.predict(X)
             if self.cr is not None:
@@ -2279,10 +2228,7 @@ class WrapRegressor:
         """
         if self.cps is None:
             raise RuntimeError(
-                (
-                    "predict_cps requires that calibrate has been"
-                    "called first with cps=True"
-                )
+                ("predict_cps requires that calibrate has been" "called first with cps=True")
             )
         else:
             y_hat = self.learner.predict(X)
@@ -2382,9 +2328,7 @@ class WrapRegressor:
         learner.
         """
         if not self.calibrated:
-            raise RuntimeError(
-                ("evaluate requires that calibrate has been" "called first")
-            )
+            raise RuntimeError(("evaluate requires that calibrate has been" "called first"))
         else:
             y_hat = self.learner.predict(X)
             if self.cr is not None:
@@ -2432,9 +2376,7 @@ class WrapClassifier:
                 f"predictor={self.cc})"
             )
         else:
-            return (
-                f"WrapClassifier(learner={self.learner}, calibrated={self.calibrated})"
-            )
+            return f"WrapClassifier(learner={self.learner}, calibrated={self.calibrated})"
 
     def fit(self, X, y, **kwargs):
         """
@@ -2683,9 +2625,7 @@ class WrapClassifier:
         if self.class_cond:
             p_values = np.array(
                 [
-                    self.cc.predict_p(
-                        alphas, np.full(len(X), self.learner.classes_[c])
-                    )[:, c]
+                    self.cc.predict_p(alphas, np.full(len(X), self.learner.classes_[c]))[:, c]
                     for c in range(len(self.learner.classes_))
                 ]
             ).T
@@ -2823,9 +2763,7 @@ class WrapClassifier:
         calibration sets.
         """
         if not self.calibrated:
-            raise RuntimeError(
-                ("evaluate requires that calibrate has been" "called first")
-            )
+            raise RuntimeError(("evaluate requires that calibrate has been" "called first"))
         else:
             if metrics is None:
                 metrics = [
@@ -2838,9 +2776,7 @@ class WrapClassifier:
                 ]
             tic = time.time()
             prediction_sets = self.predict_set(X, bins, confidence, smoothing)
-            test_results = get_test_results(
-                prediction_sets, self.learner.classes_, y, metrics
-            )
+            test_results = get_test_results(prediction_sets, self.learner.classes_, y, metrics)
             toc = time.time()
             self.time_evaluate = toc - tic
             if "time_fit" in metrics:
