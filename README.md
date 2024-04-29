@@ -8,7 +8,17 @@ and regressor. `crepes-weighted` extends `crepes` by adding support for weighted
 
 If you use `crepes-weighted` for a scientific publication, you are kindly requested to cite the following paper:
 
-SCIENTIFIC PAPER UNDER REVIEW
+```bibtex
+@misc{jonkers2024conformal,
+      title={Conformal Predictive Systems Under Covariate Shift},
+      author={Jef Jonkers and Glenn Van Wallendael and Luc Duchateau and Sofie Van Hoecke},
+      year={2024},
+      eprint={2404.15018},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
+}
+```
+The preprint version of the paper can be found at [https://arxiv.org/abs/2404.15018](https://arxiv.org/abs/2404.15018).
 
 ## License
 This project is licensed under the BSD 3-Clause License - see the [LICENSE](LICENSE) file for details.

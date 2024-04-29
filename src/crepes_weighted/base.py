@@ -597,12 +597,11 @@ class ConformalRegressor(ConformalPredictor):
             bin_values, bin_alphas = self.alphas
             bin_indexes = [np.argwhere(bins == b).T[0] for b in bin_values]
             if self.likelihood_ratios_cal is None:
-                alpha_indexes = np.array(
-                    [
-                        int((1 - confidence) * (len(bin_alphas[b]) + 1)) - 1
-                        for b in range(len(bin_values))
-                    ]
-                )
+                alpha_indexes = {
+                    b: int((1 - confidence) * (len(bin_alphas[b]) + 1)) - 1
+                    for b in range(len(bin_values))
+                    if len(bin_indexes[b]) > 0
+                }
             else:
                 if likelihood_ratios is None:
                     raise ValueError("likelihood_ratios must be provided")
@@ -649,6 +648,7 @@ class ConformalRegressor(ConformalPredictor):
                     "the corresponding intervals will be of "
                     "maximum size"
                 )
+            # TODO: check if this right probably not see difference when likelihood_ratios is None and when it is not
             bin_alpha = {
                 b: bin_alphas[b][alpha_indexes[b]] if alpha_indexes[b] >= 0 else np.inf
                 for b in range(len(bin_values))
@@ -1352,10 +1352,12 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 if len(percentile_indexes) == 1:
                     percentile_indexes = percentile_indexes[0]
                 else:
-                    percentile_indexes = [
-                        np.concatenate((percentile_indexes[0][b], percentile_indexes[1][b]), axis=1)
+                    percentile_indexes = {
+                        b: np.concatenate(
+                            (percentile_indexes[0][b], percentile_indexes[1][b]), axis=1
+                        )
                         for b in range(len(bin_values))
-                    ]
+                    }
                 if self.normalized:
                     for b in range(len(bin_values)):
                         if len(bin_indexes[b]) > 0:
@@ -1365,8 +1367,10 @@ class ConformalPredictiveSystem(ConformalPredictor):
                                 + percentile_indexes[b].shape[1],
                             ] = np.array(
                                 [
-                                    (y_hat[i] + sigmas[i] * bin_alphas[b])[percentile_indexes[b][i]]
-                                    for i in bin_indexes[b]
+                                    (y_hat[idx] + sigmas[idx] * bin_alphas[b])[
+                                        percentile_indexes[b][i]
+                                    ]
+                                    for i, idx in enumerate(bin_indexes[b])
                                 ]
                             )
                 else:
@@ -1378,8 +1382,8 @@ class ConformalPredictiveSystem(ConformalPredictor):
                                 + percentile_indexes[b].shape[1],
                             ] = np.array(
                                 [
-                                    (y_hat[i] + bin_alphas[b])[percentile_indexes[b][i]]
-                                    for i in bin_indexes[b]
+                                    (y_hat[idx] + bin_alphas[b])[percentile_indexes[b][i]]
+                                    for i, idx in enumerate(bin_indexes[b])
                                 ]
                             )
                 if len(y_min_columns) > 0:
@@ -1431,25 +1435,30 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 cpds = np.stack((cpds, weights_cal), axis=-1)
             else:
                 if self.normalized:
-                    cpds = [
-                        np.array([y_hat[i] + sigmas[i] * bin_alphas[b] for i in bin_indexes[b]])
+                    cpds = {
+                        b: np.array([y_hat[i] + sigmas[i] * bin_alphas[b] for i in bin_indexes[b]])
                         for b in range(len(bin_values))
-                    ]
+                        if len(bin_indexes[b]) > 0
+                    }
                 else:
-                    cpds = [
-                        np.array([y_hat[i] + bin_alphas[b] for i in bin_indexes[b]])
+                    cpds = {
+                        b: np.array([y_hat[i] + bin_alphas[b] for i in bin_indexes[b]])
                         for b in range(len(bin_values))
-                    ]
-                cpds = [
-                    np.stack((cpds[b], weights_cal[b]), axis=-1) for b in range(len(bin_values))
-                ]
+                        if len(bin_indexes[b]) > 0
+                    }
+                cpds = {
+                    b: np.stack((cpds[b], weights_cal[b]), axis=-1)
+                    for b in range(len(bin_values))
+                    if len(bin_indexes[b]) > 0
+                }
         if no_result_columns > 0 and return_cpds:
             if not self.mondrian or cpds_by_bins:
                 cpds_out = cpds
             else:
-                cpds_out = np.empty(len(y_hat), dtype=object)
+                cpds_out = np.empty((len(y_hat), 2), dtype=object)
                 for b in range(len(bin_values)):
-                    cpds_out[bin_indexes[b]] = [cpds[b][i] for i in range(len(cpds[b]))]
+                    if len(bin_indexes[b]) > 0:
+                        cpds_out[bin_indexes[b]] = [cpds[b][i] for i in range(len(cpds[b]))]
             return result, cpds_out
         elif no_result_columns > 0:
             return result
@@ -1457,9 +1466,10 @@ class ConformalPredictiveSystem(ConformalPredictor):
             if not self.mondrian or cpds_by_bins:
                 cpds_out = cpds
             else:
-                cpds_out = np.empty(len(y_hat), dtype=object)
+                cpds_out = np.empty((len(y_hat), 2), dtype=object)
                 for b in range(len(bin_values)):
-                    cpds_out[bin_indexes[b]] = [cpds[b][i] for i in range(len(cpds[b]))]
+                    if len(bin_indexes[b]) > 0:
+                        cpds_out[bin_indexes[b]] = [cpds[b][i] for i in range(len(cpds[b]))]
             return cpds_out
 
     def evaluate(
