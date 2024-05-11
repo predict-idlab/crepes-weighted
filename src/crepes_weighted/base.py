@@ -1167,7 +1167,6 @@ class ConformalPredictiveSystem(ConformalPredictor):
         else:
             y_min_columns = []
             y_max_columns = []
-        # TDOO: still lot of issues (certainlty with mondrian and too low and high index)
         if len(lower_percentiles) > 0:
             lower_percentiles = [lower_percentile / 100 for lower_percentile in lower_percentiles]
             if not self.mondrian:
@@ -1250,14 +1249,14 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 higher_indexes = np.stack(
                     [
                         (
-                            (np.cumsum(weights_cal, axis=1) + weights_test) >= higher_percentile
+                            np.cumsum(np.concatenate((weights_cal, weights_test), axis=1), axis=1)
+                            >= higher_percentile
                         ).argmax(axis=1)
-                        - 1
                         for higher_percentile in higher_percentiles
                     ],
                     axis=1,
                 )
-                too_high_indexes = np.argwhere(higher_indexes > len(self.alphas) - 1)
+                too_high_indexes = np.argwhere(higher_indexes > (len(self.alphas) - 1))
                 if len(too_high_indexes) > 0:
                     higher_indexes[too_high_indexes] = len(self.alphas) - 1
                     percentiles_to_show = " ".join(
@@ -1292,16 +1291,20 @@ class ConformalPredictiveSystem(ConformalPredictor):
                     higher_indexes = np.stack(
                         [
                             (
-                                (np.cumsum(weights_cal[b], axis=1) + weights_test[b])
+                                (
+                                    np.cumsum(
+                                        np.concatenate((weights_cal[b], weights_test[b]), axis=1),
+                                        axis=1,
+                                    )
+                                )
                                 >= higher_percentile
                             ).argmax(axis=1)
-                            - 1
                             for higher_percentile in higher_percentiles
                         ],
                         axis=1,
                     )
                     binned_higher_indexes[b] = higher_indexes
-                    too_high_indexes = np.argwhere(higher_indexes > len(bin_alphas[b]) - 1)
+                    too_high_indexes = np.argwhere(higher_indexes > (len(bin_alphas[b]) - 1))
                     if len(too_high_indexes) > 0:
                         higher_indexes[too_high_indexes] = -1
                         too_small_bins.append(str(bin_values[b]))
