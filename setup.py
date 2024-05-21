@@ -11,7 +11,7 @@ setuptools.setup(
     description="Weighted version of crepes: Conformal classifiers, regressors, and predictive systems (crepes)",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    # url="https://github.com/henrikbostrom/crepes",
+    url="https://github.com/predict-idlab/crepes-weighted",
     # project_urls={
     #     "Bug Tracker": "https://github.com//henrikbostrom/crepes/issues",
     # },
