@@ -1250,13 +1250,14 @@ class ConformalPredictiveSystem(ConformalPredictor):
                     [
                         (
                             np.cumsum(np.concatenate((weights_cal, weights_test), axis=1), axis=1)
-                            >= higher_percentile
+                            > higher_percentile
                         ).argmax(axis=1)
+                        + 1
                         for higher_percentile in higher_percentiles
                     ],
                     axis=1,
                 )
-                too_high_indexes = np.argwhere(higher_indexes > (len(self.alphas) - 1))
+                too_high_indexes = np.argwhere(higher_indexes >= (len(self.alphas) - 1))
                 if len(too_high_indexes) > 0:
                     higher_indexes[too_high_indexes] = len(self.alphas) - 1
                     percentiles_to_show = " ".join(
@@ -1297,14 +1298,15 @@ class ConformalPredictiveSystem(ConformalPredictor):
                                         axis=1,
                                     )
                                 )
-                                >= higher_percentile
+                                > higher_percentile
                             ).argmax(axis=1)
+                            + 1
                             for higher_percentile in higher_percentiles
                         ],
                         axis=1,
                     )
                     binned_higher_indexes[b] = higher_indexes
-                    too_high_indexes = np.argwhere(higher_indexes > (len(bin_alphas[b]) - 1))
+                    too_high_indexes = np.argwhere(higher_indexes >= (len(bin_alphas[b]) - 1))
                     if len(too_high_indexes) > 0:
                         higher_indexes[too_high_indexes] = -1
                         too_small_bins.append(str(bin_values[b]))
@@ -1576,6 +1578,19 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 weighted_cpd = False
             else:
                 weighted_cpd = True
+        else:
+            intervals = self.predict(
+                y_hat,
+                sigmas=sigmas,
+                bins=bins,
+                likelihood_ratios=likelihood_ratios,
+                lower_percentiles=lower_percentile,
+                higher_percentiles=higher_percentile,
+                y_min=y_min,
+                y_max=y_max,
+                return_cpds=False,
+            )
+        if "CRPS" in metrics:
             if not self.mondrian:
                 if self.normalized:
                     crps = calculate_crps(cpds, self.alphas, sigmas, y, weighted_cpds=weighted_cpd)
@@ -1610,18 +1625,7 @@ class ConformalPredictiveSystem(ConformalPredictor):
                             for b in range(len(bin_values))
                         ]
                     ) / len(y)
-        else:
-            intervals = self.predict(
-                y_hat,
-                sigmas=sigmas,
-                bins=bins,
-                likelihood_ratios=likelihood_ratios,
-                lower_percentiles=lower_percentile,
-                higher_percentiles=higher_percentile,
-                y_min=y_min,
-                y_max=y_max,
-                return_cpds=False,
-            )
+
         if "error" in metrics:
             test_results["error"] = 1 - np.mean(
                 np.logical_and(intervals[:, 0] <= y, y <= intervals[:, 1])
