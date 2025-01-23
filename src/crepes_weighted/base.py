@@ -14,7 +14,7 @@ License: BSD 3 clause
 
 """
 
-__version__ = "0.6.2"
+__version__ = "0.1.1"
 
 import time
 import warnings
