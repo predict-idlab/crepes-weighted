@@ -1,3 +1,6 @@
+[project]
+dynamic = ["version"]
+
 [build-system]
 requires = [
     "setuptools>=61.0",
