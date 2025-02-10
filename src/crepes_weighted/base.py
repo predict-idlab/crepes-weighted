@@ -1362,6 +1362,7 @@ class ConformalPredictiveSystem(ConformalPredictor):
                             (percentile_indexes[0][b], percentile_indexes[1][b]), axis=1
                         )
                         for b in range(len(bin_values))
+                        if len(bin_indexes[b]) > 0
                     }
                 if self.normalized:
                     for b in range(len(bin_values)):
@@ -1393,17 +1394,14 @@ class ConformalPredictiveSystem(ConformalPredictor):
                             )
                 if len(y_min_columns) > 0:
                     for b in range(len(bin_values)):
-                        if len(bin_indexes[b]) == 0:
-                            continue
-                        if len(y_min_columns[b]) > 0:
-                            result[
-                                bin_indexes[b],
-                                y_min_columns[b][:, 1],
-                            ] = y_min
+                        if len(bin_indexes[b]) > 0 and len(y_min_columns[b]) > 0:
+                            for i in range(len(y_min_columns[b])):
+                                result[y_min_columns[b][i][0], y_min_columns[b][i][1]] = y_min
                 if len(y_max_columns) > 0:
                     for b in range(len(bin_values)):
                         if len(bin_indexes[b]) > 0 and len(y_max_columns[b]) > 0:
-                            result[bin_indexes[b], y_max_columns[b]] = y_max
+                            for i in range(len(y_max_columns[b])):
+                                result[y_max_columns[b][i][0], y_max_columns[b][i][1]] = y_max
             if y_min > -np.inf:
                 result[
                     :,
@@ -1471,10 +1469,12 @@ class ConformalPredictiveSystem(ConformalPredictor):
             if not self.mondrian or cpds_by_bins:
                 cpds_out = cpds
             else:
-                cpds_out = np.empty((len(y_hat), 2), dtype=object)
+                cpds_out = {}
                 for b in range(len(bin_values)):
                     if len(bin_indexes[b]) > 0:
-                        cpds_out[bin_indexes[b]] = [cpds[b][i] for i in range(len(cpds[b]))]
+                        for i in range(len(cpds[b])):
+                            cpds_out[bin_indexes[b][i]] = cpds[b][i]
+                cpds_out = [cpds_out[i] for i in range(len(cpds_out))]
             return cpds_out
 
     def evaluate(
