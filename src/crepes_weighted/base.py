@@ -1556,6 +1556,7 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 "eff_med",
                 "CRPS",
                 "coverage_q",
+                "dispersion",
                 "time_fit",
                 "time_evaluate",
             ]
@@ -1574,6 +1575,7 @@ class ConformalPredictiveSystem(ConformalPredictor):
                 cpds_by_bins=True,
             )
             intervals = results[:, [1, 2]]
+            p_values = results[:, 0]
             if self.likelihood_ratios_cal is None:
                 weighted_cpd = False
             else:
@@ -1650,6 +1652,563 @@ class ConformalPredictiveSystem(ConformalPredictor):
             coverage = np.mean(np.array(y).reshape(-1, 1) <= deciles, axis=0)
             for i in range(1, 10):
                 test_results[f"coverage_q{int(i*10)}"] = coverage[i - 1]
+        if "dispersion" in metrics:
+            test_results["dispersion"] = np.var(p_values)
+        if "time_fit" in metrics:
+            test_results["time_fit"] = self.time_fit
+            toc = time.time()
+            self.time_evaluate = toc - tic
+        if "time_evaluate" in metrics:
+            test_results["time_evaluate"] = self.time_evaluate
+        return test_results
+
+
+class ConformalPredictiveSystemWithCDF(ConformalPredictiveSystem):
+    def predict(
+        self,
+        pred_cdf,
+        sigmas=None,
+        bins=None,
+        likelihood_ratios=None,
+        y=None,
+        lower_percentiles=None,
+        higher_percentiles=None,
+        y_min=-np.inf,
+        y_max=np.inf,
+        return_cpds=False,
+        cpds_by_bins=False,
+    ):
+        tic = time.time()
+        if self.mondrian:
+            bin_values, bin_alphas = self.alphas
+            bin_indexes = [np.argwhere(bins == b).T[0] for b in bin_values]
+        no_prec_result_cols = 0
+        if isinstance(lower_percentiles, (int, float, np.integer, np.floating)):
+            lower_percentiles = [lower_percentiles]
+        if isinstance(higher_percentiles, (int, float, np.integer, np.floating)):
+            higher_percentiles = [higher_percentiles]
+        if lower_percentiles is None:
+            lower_percentiles = []
+        if higher_percentiles is None:
+            higher_percentiles = []
+        if (
+            (np.array(lower_percentiles) > 100).any()
+            or (np.array(lower_percentiles) < 0).any()
+            or (np.array(higher_percentiles) > 100).any()
+            or (np.array(higher_percentiles) < 0).any()
+        ):
+            raise ValueError("All percentiles must be in the range [0,100]")
+        if sigmas is not None:
+            raise ValueError(
+                "sigmas can not be provided for CDF-based conformal predictive systems"
+            )
+        no_result_columns = (y is not None) + len(lower_percentiles) + len(higher_percentiles)
+        if no_result_columns > 0:
+            result = np.zeros((len(pred_cdf), no_result_columns))
+        if likelihood_ratios is not None:
+            if not self.mondrian:
+                if self.likelihood_ratios_cal is None:
+                    raise ValueError("likelihood_ratios_cal must be " "provided")
+                weights_cal = self.likelihood_ratios_cal.reshape(1, -1).repeat(
+                    len(pred_cdf), axis=0
+                ) / (self.likelihood_ratios_cal.sum() + likelihood_ratios.reshape(-1, 1))
+                weights_test = likelihood_ratios.reshape(-1, 1) / (
+                    self.likelihood_ratios_cal.sum() + likelihood_ratios.reshape(-1, 1)
+                )
+            else:
+                if self.likelihood_ratios_cal is None:
+                    raise ValueError("likelihood_ratios_cal must be " "provided")
+                weights_cal = {
+                    b: self.likelihood_ratios_cal[b]
+                    .reshape(1, -1)
+                    .repeat(len(bin_indexes[b]), axis=0)
+                    / (
+                        self.likelihood_ratios_cal[b].sum()
+                        + likelihood_ratios.reshape(-1, 1)[bin_indexes[b]]
+                    )
+                    for b in range(len(bin_values))
+                    if len(bin_indexes[b]) > 0
+                }
+                weights_test = {
+                    b: likelihood_ratios.reshape(-1, 1)[bin_indexes[b]]
+                    / (
+                        self.likelihood_ratios_cal[b].sum()
+                        + likelihood_ratios.reshape(-1, 1)[bin_indexes[b]]
+                    )
+                    for b in range(len(bin_values))
+                    if len(bin_indexes[b]) > 0
+                }
+        else:
+            if not self.mondrian:
+                weights_cal = np.ones((len(pred_cdf), len(self.alphas))) / (len(self.alphas) + 1)
+                weights_test = np.ones((len(pred_cdf), 1)) / (len(self.alphas) + 1)
+            else:
+                weights_cal = {
+                    b: np.ones((len(bin_indexes[b]), len(bin_alphas[b]))) / (len(bin_alphas[b]) + 1)
+                    for b in range(len(bin_values))
+                    if len(bin_indexes[b]) > 0
+                }
+                weights_test = {
+                    b: np.ones((len(bin_indexes[b]), 1)) / (len(bin_alphas[b]) + 1)
+                    for b in range(len(bin_values))
+                    if len(bin_indexes[b]) > 0
+                }
+        if y is not None:
+            no_prec_result_cols += 1
+            gammas = np.random.rand(len(pred_cdf))
+            if isinstance(y, (int, float, np.integer, np.floating)):
+                y = np.array([y] * len(pred_cdf))
+            if isinstance(y, list):
+                y = np.array(y)
+            if isinstance(y, pd.Series):
+                y = y.to_numpy()
+            if type(y) is np.ndarray and len(y) == len(pred_cdf):
+                y = y.reshape(-1, 1)
+                if not self.mondrian:
+                    # y shape: (n_values,)
+                    scores = np.mean(pred_cdf <= y.reshape(-1, 1), axis=1).reshape(-1, 1)
+                    result[:, 0] = (
+                        np.sum((self.alphas.reshape(1, -1) < scores) * weights_cal, axis=1)
+                        + np.sum((self.alphas.reshape(1, -1) == scores) * weights_cal, axis=1)
+                        * gammas
+                        + gammas * weights_test.flatten()
+                    )
+                else:
+                    for b in range(len(bin_values)):
+                        if len(bin_indexes[b]) == 0:
+                            continue
+                        scores = np.mean(
+                            pred_cdf[bin_indexes[b]] <= y[bin_indexes[b]].reshape(-1, 1), axis=1
+                        ).reshape(-1, 1)
+                        result[bin_indexes[b], 0] = (
+                            np.sum((bin_alphas[b].reshape(1, -1) < scores) * weights_cal[b], axis=1)
+                            + np.sum(
+                                (bin_alphas[b].reshape(1, -1) == scores) * weights_cal[b], axis=1
+                            )
+                            * gammas[bin_indexes[b]]
+                            + gammas[bin_indexes[b]] * weights_test[b].flatten()
+                        )
+            else:
+                raise ValueError(
+                    (
+                        "y must either be a single int, float or"
+                        "a list/numpy array of the same length as "
+                        "the residuals"
+                    )
+                )
+        percentile_indexes = []
+        if self.mondrian:
+            y_min_columns = {}
+            y_max_columns = {}
+        else:
+            y_min_columns = []
+            y_max_columns = []
+        if len(lower_percentiles) > 0:
+            lower_percentiles = [lower_percentile / 100 for lower_percentile in lower_percentiles]
+            if not self.mondrian:
+                lower_indexes = np.stack(
+                    [
+                        ((np.cumsum(weights_cal, axis=1) + weights_test) < lower_percentile).argmin(
+                            axis=1
+                        )
+                        - 1
+                        for lower_percentile in lower_percentiles
+                    ],
+                    axis=1,
+                )
+                too_low_indexes = np.argwhere(lower_indexes < 0)
+                if len(too_low_indexes) > 0:
+                    lower_indexes[too_low_indexes[:, 0], too_low_indexes[:, 1]] = 0
+                    percentiles_to_show = " ".join(
+                        [
+                            f"\n(Perc: {lower_percentiles[too_low_index_obs[1]]*100}, "
+                            f"Obs: {too_low_index_obs[0]}, "
+                            f"Weight obs: {weights_test[too_low_index_obs[0]]}, "
+                            f"Smallest density: {weights_cal[too_low_index_obs[0], 0] + weights_test[too_low_index_obs[0]]})"
+                            for too_low_index_obs in too_low_indexes
+                        ]
+                    )
+                    warnings.warn(
+                        "the no. of calibration examples is "
+                        "too small for the following lower "
+                        f"percentiles and observation: {percentiles_to_show}; "
+                        "the corresponding values are "
+                        "set to y_min"
+                    )
+                    y_min_columns = too_low_indexes
+                    y_min_columns[:, 1] = y_min_columns[:, 1] + no_prec_result_cols
+                percentile_indexes = lower_indexes
+            else:
+                too_small_bins = []
+                binned_lower_indexes = {}
+                for b in range(len(bin_values)):
+                    if len(bin_indexes[b]) == 0:
+                        continue
+                    lower_indexes = np.stack(
+                        [
+                            (
+                                (np.cumsum(weights_cal[b], axis=1) + weights_test[b])
+                                < lower_percentile
+                            ).argmin(axis=1)
+                            - 1
+                            for lower_percentile in lower_percentiles
+                        ],
+                        axis=1,
+                    )
+                    binned_lower_indexes[b] = lower_indexes
+                    too_low_indexes = np.argwhere(lower_indexes < 0)
+                    if len(too_low_indexes) > 0:
+                        lower_indexes[too_low_indexes[:, 0], too_low_indexes[:, 1]] = 0
+                        too_small_bins.append(str(bin_values[b]))
+                        y_min_columns[b] = too_low_indexes
+                    else:
+                        y_min_columns[b] = []
+                percentile_indexes = [binned_lower_indexes]
+                if len(too_small_bins) > 0:
+                    if len(too_small_bins) < 11:
+                        bins_to_show = " ".join(too_small_bins)
+                    else:
+                        bins_to_show = " ".join(too_small_bins[:10] + ["..."])
+                    warnings.warn(
+                        "the no. of calibration examples is "
+                        "too small for some lower percentile "
+                        "in the following bins:"
+                        f"{bins_to_show}; "
+                        "the corresponding values are "
+                        "set to y_min"
+                    )
+        if len(higher_percentiles) > 0:
+            higher_percentiles = [
+                higher_percentile / 100 for higher_percentile in higher_percentiles
+            ]
+            if not self.mondrian:
+                higher_indexes = np.stack(
+                    [
+                        (
+                            np.cumsum(np.concatenate((weights_cal, weights_test), axis=1), axis=1)
+                            > higher_percentile
+                        ).argmax(axis=1)
+                        + 1
+                        for higher_percentile in higher_percentiles
+                    ],
+                    axis=1,
+                )
+                too_high_indexes = np.argwhere(higher_indexes >= (len(self.alphas) - 1))
+                if len(too_high_indexes) > 0:
+                    higher_indexes[too_high_indexes] = len(self.alphas) - 1
+                    percentiles_to_show = " ".join(
+                        [
+                            f"\n(Perc: {higher_percentiles[too_high_index_obs[1]]*100}, "
+                            f"Obs: {too_high_index_obs[0]}, "
+                            f"Weight obs: {weights_test[too_high_index_obs[0]]})"
+                            for too_high_index_obs in too_high_indexes
+                        ]
+                    )
+                    warnings.warn(
+                        "the no. of calibration examples is "
+                        "too small for the following higher "
+                        f"percentiles and observation: {percentiles_to_show}; "
+                        "the corresponding values are "
+                        "set to y_max"
+                    )
+                    y_max_columns = too_high_indexes
+                    y_max_columns[:, 1] = (
+                        y_max_columns[:, 1] + no_prec_result_cols + len(lower_percentiles)
+                    )
+                if len(percentile_indexes) == 0:
+                    percentile_indexes = higher_indexes
+                else:
+                    percentile_indexes = np.concatenate((lower_indexes, higher_indexes), axis=-1)
+            else:
+                too_small_bins = []
+                binned_higher_indexes = {}
+                for b in range(len(bin_values)):
+                    if len(bin_indexes[b]) == 0:
+                        continue
+                    higher_indexes = np.stack(
+                        [
+                            (
+                                (
+                                    np.cumsum(
+                                        np.concatenate((weights_cal[b], weights_test[b]), axis=1),
+                                        axis=1,
+                                    )
+                                )
+                                > higher_percentile
+                            ).argmax(axis=1)
+                            + 1
+                            for higher_percentile in higher_percentiles
+                        ],
+                        axis=1,
+                    )
+                    binned_higher_indexes[b] = higher_indexes
+                    too_high_indexes = np.argwhere(higher_indexes >= (len(bin_alphas[b]) - 1))
+                    if len(too_high_indexes) > 0:
+                        higher_indexes[too_high_indexes] = -1
+                        too_small_bins.append(str(bin_values[b]))
+                        y_max_columns[b] = too_high_indexes
+                    else:
+                        y_max_columns[b] = []
+                if len(percentile_indexes) == 0:
+                    percentile_indexes = [binned_higher_indexes]
+                else:
+                    percentile_indexes.append(binned_higher_indexes)
+                if len(too_small_bins) > 0:
+                    if len(too_small_bins) < 11:
+                        bins_to_show = " ".join(too_small_bins)
+                    else:
+                        bins_to_show = " ".join(too_small_bins[:10] + ["..."])
+                    warnings.warn(
+                        "the no. of calibration examples is "
+                        "too small for some higher percentile "
+                        "in the following bins:"
+                        f"{bins_to_show}; "
+                        "the corresponding values are "
+                        "set to y_max"
+                    )
+        if len(percentile_indexes) > 0:
+            if not self.mondrian:
+                result[
+                    :,
+                    no_prec_result_cols : no_prec_result_cols + percentile_indexes.shape[1],
+                ] = np.array(
+                    [
+                        pred_cdf[
+                            i,
+                            np.ceil(self.alphas[percentile_indexes[i]] * pred_cdf.shape[1]).astype(
+                                int
+                            )
+                            - 1,
+                        ]
+                        for i in range(len(pred_cdf))
+                    ]
+                )
+                if len(y_min_columns) > 0:
+                    result[y_min_columns[:, 0], y_min_columns[:, 1]] = y_min
+                if len(y_max_columns) > 0:
+                    result[y_max_columns[:, 0], y_max_columns[:, 1]] = y_max
+            else:
+                if len(percentile_indexes) == 1:
+                    percentile_indexes = percentile_indexes[0]
+                else:
+                    percentile_indexes = {
+                        b: np.concatenate(
+                            (percentile_indexes[0][b], percentile_indexes[1][b]), axis=1
+                        )
+                        for b in range(len(bin_values))
+                        if len(bin_indexes[b]) > 0
+                    }
+                for b in range(len(bin_values)):
+                    if len(bin_indexes[b]) > 0:
+                        result[
+                            bin_indexes[b],
+                            no_prec_result_cols : no_prec_result_cols
+                            + percentile_indexes[b].shape[1],
+                        ] = np.array(
+                            [
+                                pred_cdf[
+                                    bin_indexes[b],
+                                    np.ceil(
+                                        bin_alphas[b][percentile_indexes[b][i]] * pred_cdf.shape[1]
+                                    ).astype(int)
+                                    - 1,
+                                ]
+                                for i in range(len(bin_indexes[b]))
+                            ]
+                        )
+                if len(y_min_columns) > 0:
+                    for b in range(len(bin_values)):
+                        if len(bin_indexes[b]) > 0 and len(y_min_columns[b]) > 0:
+                            for i in range(len(y_min_columns[b])):
+                                result[y_min_columns[b][i][0], y_min_columns[b][i][1]] = y_min
+                if len(y_max_columns) > 0:
+                    for b in range(len(bin_values)):
+                        if len(bin_indexes[b]) > 0 and len(y_max_columns[b]) > 0:
+                            for i in range(len(y_max_columns[b])):
+                                result[y_max_columns[b][i][0], y_max_columns[b][i][1]] = y_max
+            if y_min > -np.inf:
+                result[
+                    :,
+                    no_prec_result_cols : no_prec_result_cols + len(percentile_indexes),
+                ][
+                    result[
+                        :,
+                        no_prec_result_cols : no_prec_result_cols + len(percentile_indexes),
+                    ]
+                    < y_min
+                ] = y_min
+            if y_max < np.inf:
+                result[
+                    :,
+                    no_prec_result_cols : no_prec_result_cols + len(percentile_indexes),
+                ][
+                    result[
+                        :,
+                        no_prec_result_cols : no_prec_result_cols + len(percentile_indexes),
+                    ]
+                    > y_max
+                ] = y_max
+            no_prec_result_cols += len(percentile_indexes)
+        toc = time.time()
+        self.time_predict = toc - tic
+        if no_result_columns > 0 and result.shape[1] == 1:
+            result = result[:, 0]
+        if return_cpds:
+            if not self.mondrian:
+                cpds = np.stack(
+                    [
+                        pred_cdf[:, np.floor(alpha * pred_cdf.shape[1]).astype(int) - 1]
+                        for alpha in self.alphas
+                    ],
+                    axis=-1,
+                )
+                cpds = np.stack((cpds, weights_cal), axis=-1)
+            else:
+                cpds = {
+                    b: np.stack(
+                        [
+                            pred_cdf[
+                                bin_indexes[b],
+                                np.floor(bin_alphas[b] * pred_cdf.shape[1]).astype(int) - 1,
+                            ]
+                            for i in range(len(bin_indexes[b]))
+                        ],
+                        axis=-1,
+                    )
+                    for b in range(len(bin_values))
+                    if len(bin_indexes[b]) > 0
+                }
+                cpds = {
+                    b: np.stack((cpds[b], weights_cal[b]), axis=-1)
+                    for b in range(len(bin_values))
+                    if len(bin_indexes[b]) > 0
+                }
+        if no_result_columns > 0 and return_cpds:
+            if not self.mondrian or cpds_by_bins:
+                cpds_out = cpds
+            else:
+                cpds_out = np.empty((len(pred_cdf), 2), dtype=object)
+                for b in range(len(bin_values)):
+                    if len(bin_indexes[b]) > 0:
+                        cpds_out[bin_indexes[b]] = [cpds[b][i] for i in range(len(cpds[b]))]
+            return result, cpds_out
+        elif no_result_columns > 0:
+            return result
+        elif return_cpds:
+            if not self.mondrian or cpds_by_bins:
+                cpds_out = cpds
+            else:
+                cpds_out = {}
+                for b in range(len(bin_values)):
+                    if len(bin_indexes[b]) > 0:
+                        for i in range(len(cpds[b])):
+                            cpds_out[bin_indexes[b][i]] = cpds[b][i]
+                cpds_out = [cpds_out[i] for i in range(len(cpds_out))]
+            return cpds_out
+
+    def evaluate(
+        self,
+        pred_cdf,
+        y,
+        sigmas=None,
+        bins=None,
+        likelihood_ratios=None,
+        confidence=0.95,
+        y_min=-np.inf,
+        y_max=np.inf,
+        metrics=None,
+    ):
+        tic = time.time()
+        test_results = {}
+        lower_percentile = (1 - confidence) / 2 * 100
+        higher_percentile = (confidence + (1 - confidence) / 2) * 100
+        if metrics is None:
+            metrics = [
+                "error",
+                "eff_mean",
+                "eff_med",
+                "CRPS",
+                "coverage_q",
+                "dispersion",
+                "time_fit",
+                "time_evaluate",
+            ]
+        if "CRPS" in metrics or "dispersion" in metrics:
+            results, cpds = self.predict(
+                pred_cdf,
+                sigmas=sigmas,
+                bins=bins,
+                likelihood_ratios=likelihood_ratios,
+                y=y,
+                lower_percentiles=lower_percentile,
+                higher_percentiles=higher_percentile,
+                y_min=y_min,
+                y_max=y_max,
+                return_cpds=True,
+                cpds_by_bins=True,
+            )
+            intervals = results[:, [1, 2]]
+            p_values = results[:, 0]
+            if self.likelihood_ratios_cal is None:
+                weighted_cpd = False
+            else:
+                weighted_cpd = True
+        else:
+            intervals = self.predict(
+                pred_cdf,
+                sigmas=sigmas,
+                bins=bins,
+                likelihood_ratios=likelihood_ratios,
+                lower_percentiles=lower_percentile,
+                higher_percentiles=higher_percentile,
+                y_min=y_min,
+                y_max=y_max,
+                return_cpds=False,
+            )
+        if "CRPS" in metrics:
+            if not self.mondrian:
+                crps = calculate_crps(cpds, self.alphas, np.ones(len(pred_cdf)), y, weighted_cpd)
+            else:
+                bin_values, bin_alphas = self.alphas
+                bin_indexes = [np.argwhere(bins == b).T[0] for b in bin_values]
+                crps = np.sum(
+                    [
+                        calculate_crps(
+                            cpds[b],
+                            bin_alphas[b],
+                            np.ones(len(bin_indexes[b])),
+                            y[bin_indexes[b]],
+                        )
+                        * len(bin_indexes[b])
+                        for b in range(len(bin_values))
+                    ]
+                ) / len(y)
+        if "error" in metrics:
+            test_results["error"] = 1 - np.mean(
+                np.logical_and(intervals[:, 0] <= y, y <= intervals[:, 1])
+            )
+        if "eff_mean" in metrics:
+            test_results["eff_mean"] = np.mean(intervals[:, 1] - intervals[:, 0])
+        if "eff_med" in metrics:
+            test_results["eff_med"] = np.median(intervals[:, 1] - intervals[:, 0])
+        if "CRPS" in metrics:
+            test_results["CRPS"] = crps
+        if "coverage_q" in metrics:
+            deciles = self.predict(
+                pred_cdf,
+                sigmas=sigmas,
+                bins=bins,
+                likelihood_ratios=likelihood_ratios,
+                lower_percentiles=np.arange(10, 100, 10),
+                y_min=y_min,
+                y_max=y_max,
+                return_cpds=False,
+            )
+            coverage = np.mean(np.array(y).reshape(-1, 1) <= deciles, axis=0)
+            for i in range(1, 10):
+                test_results[f"coverage_q{int(i*10)}"] = coverage[i - 1]
+        if "dispersion" in metrics:
+            test_results["dispersion"] = np.var(p_values)
         if "time_fit" in metrics:
             test_results["time_fit"] = self.time_fit
             toc = time.time()
@@ -2372,6 +2931,121 @@ class WrapRegressor:
                     y_max=y_max,
                     metrics=metrics,
                 )
+
+
+class WrapProbabilisticRegressor:
+    """
+    A distribution/probabilistic learner wrapped with a :class:`.ConformalPredictiveSystem`.
+    """
+
+    def __init__(self, learner):
+        self.cps = None
+        self.calibrated = False
+        self.learner = learner
+
+    def __repr__(self):
+        if self.calibrated:
+            return (
+                f"WrapRegressor(learner={self.learner}, "
+                f"calibrated={self.calibrated}, "
+                f"predictor={self.cps})"
+            )
+        else:
+            return f"WrapRegressor(learner={self.learner}, calibrated={self.calibrated})"
+
+    def fit(self, X, y, **kwargs):
+        self.learner.fit(X, y, **kwargs)
+
+    def predict(self, X):
+        return np.mean(self.learner.predict(X), axis=1)  # mean of the predictive distribution
+
+    def calibrate(self, X, y, sigmas=None, bins=None, likelihood_ratios=None):
+        pred_cdf = self.learner.predict(X)
+        scores = np.mean(pred_cdf <= y.reshape(-1, 1), axis=1)
+        self.cps = ConformalPredictiveSystemWithCDF()
+        self.cps.fit(scores, bins=bins, likelihood_ratios=likelihood_ratios)
+        self.calibrated = True
+
+    def predict_int(
+        self,
+        X,
+        sigmas=None,
+        bins=None,
+        likelihood_ratios=None,
+        confidence=0.95,
+        y_min=-np.inf,
+        y_max=np.inf,
+    ):
+        if not self.calibrated:
+            raise RuntimeError(("predict_int requires that calibrate has been" "called first"))
+        else:
+            pred_cdf = self.learner.predict(X)
+            lower_percentile = (1 - confidence) / 2 * 100
+            higher_percentile = (confidence + (1 - confidence) / 2) * 100
+            return self.cps.predict(
+                pred_cdf,
+                bins=bins,
+                likelihood_ratios=likelihood_ratios,
+                lower_percentiles=lower_percentile,
+                higher_percentiles=higher_percentile,
+                y_min=y_min,
+                y_max=y_max,
+            )
+
+    def predict_cps(
+        self,
+        X,
+        sigmas=None,
+        bins=None,
+        likelihood_ratios=None,
+        y=None,
+        lower_percentiles=None,
+        higher_percentiles=None,
+        y_min=-np.inf,
+        y_max=np.inf,
+        return_cpds=False,
+        cpds_by_bins=False,
+    ):
+        pred_cdf = self.learner.predict(X)
+        return self.cps.predict(
+            pred_cdf,
+            bins=bins,
+            likelihood_ratios=likelihood_ratios,
+            y=y,
+            lower_percentiles=lower_percentiles,
+            higher_percentiles=higher_percentiles,
+            y_min=y_min,
+            y_max=y_max,
+            return_cpds=return_cpds,
+            cpds_by_bins=cpds_by_bins,
+        )
+
+    def evaluate(
+        self,
+        X,
+        y,
+        sigmas=None,
+        bins=None,
+        likelihood_ratios=None,
+        confidence=0.95,
+        y_min=-np.inf,
+        y_max=np.inf,
+        metrics=None,
+    ):
+        if not self.calibrated:
+            raise RuntimeError(("evaluate requires that calibrate has been" "called first"))
+
+        pred_cdf = self.learner.predict(X)
+        return self.cps.evaluate(
+            pred_cdf,
+            y,
+            bins=bins,
+            likelihood_ratios=likelihood_ratios,
+            confidence=confidence,
+            y_min=y_min,
+            y_max=y_max,
+            metrics=metrics,
+        )
 
 
 class WrapClassifier:

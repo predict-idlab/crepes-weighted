@@ -1,2 +1,10 @@
-from crepes_weighted.base import WrapRegressor, WrapClassifier, ConformalRegressor, ConformalPredictiveSystem, ConformalClassifier, ConformalPredictor, __version__
-
+from crepes_weighted.base import (
+    ConformalClassifier,
+    ConformalPredictiveSystem,
+    ConformalPredictor,
+    ConformalRegressor,
+    WrapClassifier,
+    WrapProbabilisticRegressor,
+    WrapRegressor,
+    __version__,
+)
